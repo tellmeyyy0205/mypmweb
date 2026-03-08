@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartGrade - 智能边缘录入终端</title>
+  
+  <!-- 引入 Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 引入 React 和 ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- 引入 Babel 用于在浏览器中编译 JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- 引入 Lucide 图标库的轻量级浏览器版本 -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* 全局样式注入 */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+    .animate-shake {
+      animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+    }
+    .ios-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background-color: #e5e5ea;
+      border-radius: 9999px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+    .ios-switch.active {
+      background-color: #34c759;
+    }
+    .ios-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background-color: white;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    .ios-switch.active::after {
+      transform: translateX(20px);
+    }
+    
+    /* 隐藏滚动条 */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // --- 图标组件封装 (模拟 lucide-react) ---
+    // 由于在浏览器直接运行，我们创建轻量级的 SVG 包装器
+    const Icon = ({ name, className = "w-5 h-5", onClick, strokeWidth = "2" }) => {
+      const svgProps = {
+        xmlns: "http://www.w3.org/2000/svg",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: strokeWidth,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        className: className,
+        onClick: onClick
+      };
+
+      const icons = {
+        'shield': <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></>,
+        'usb': <><circle cx="10" cy="7" r="1"></circle><circle cx="10" cy="17" r="1"></circle><path d="M14 7h-2v10h2"></path><path d="M18 12h-8"></path><path d="M6 12h4"></path></>, // Simplified USB
+        'upload-cloud': <><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m16 16-4-4-4 4"></path></>,
+        'check-circle-2': <><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></>,
+        'alert-circle': <><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></>,
+        'help-circle': <><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></>,
+        'camera': <><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></>,
+        'download': <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></>,
+        'eye': <><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></>,
+        'sparkles': <><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></>,
+        'user': <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></>,
+        'log-out': <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></>,
+        'plus': <><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></>,
+        'file-text': <><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></>,
+        'video': <><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></>,
+        'video-off': <><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></>,
+        'refresh-cw': <><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></>,
+        'x': <><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></>,
+        'file-signature': <><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M14 17a3 3 0 0 1-6 0"></path><path d="M8 17a3 3 0 0 1 6 0"></path></>, // Simplified
+        'alert-triangle': <><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></>,
+        'chevron-down': <><polyline points="6 9 12 15 18 9"></polyline></>
+      };
+
+      return (
+        <svg {...svgProps}>
+          {icons[name]}
+        </svg>
+      );
+    };
+
+    // --- Page 1: 离线安全网关页 ---
+    const LoginPage = ({ onLogin }) => {
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const [focusedField, setFocusedField] = useState(''); 
+      const [shakeFields, setShakeFields] = useState([]); 
+      const [errors, setErrors] = useState({ username: '', password: '' });
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        
+        let hasError = false;
+        let newErrors = { username: '', password: '' };
+        let newShakes = [];
+
+        if (!username.trim()) {
+          newErrors.username = '请输入教工号';
+          newShakes.push('username');
+          hasError = true;
+        } else if (username !== '20262026') {
+          newErrors.username = '该教工号不存在';
+          newShakes.push('username');
+          hasError = true;
+        }
+
+        if (!password) {
+          newErrors.password = '请输入密码或 PIN 码';
+          newShakes.push('password');
+          hasError = true;
+        } else if (password !== '121212') {
+          newErrors.password = '密码或 PIN 码错误';
+          newShakes.push('password');
+          hasError = true;
+        }
+
+        setErrors(newErrors);
+        setShakeFields(newShakes);
+
+        if (hasError) {
+          setTimeout(() => setShakeFields([]), 500); 
+          return;
+        }
+
+        setErrors({ username: '', password: '' });
+        onLogin();
+      };
+
+      const handleUsernameChange = (e) => {
+        setUsername(e.target.value);
+        if (errors.username) setErrors({ ...errors, username: '' });
+      };
+
+      const handlePasswordChange = (e) => {
+        setPassword(e.target.value);
+        if (errors.password) setErrors({ ...errors, password: '' });
+      };
+
+      return (
+        <div className="relative w-full h-screen flex items-center justify-center overflow-hidden bg-slate-900">
+          <div 
+            className="absolute inset-0 z-0 bg-cover bg-center opacity-60 scale-105 filter blur-sm"
+            style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=2000&auto=format&fit=crop)' }}
+          ></div>
+          
+          <div className="relative z-10 glass-card w-[320px] rounded-2xl p-8 flex flex-col items-center transition-all duration-300">
+            <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center mb-4 shadow-md">
+              <Icon name="shield" className="text-white w-6 h-6" />
+            </div>
+            <h1 className="text-lg font-semibold text-slate-800 tracking-tight mb-1">SmartGrade</h1>
+            <p className="text-xs text-slate-500 mb-6">安全本地登录</p>
+
+            <form onSubmit={handleLogin} className="w-full flex flex-col gap-4">
+              <div className="relative">
+                <input 
+                  type="text" 
+                  placeholder="教工号" 
+                  value={username}
+                  onChange={handleUsernameChange}
+                  onFocus={() => setFocusedField('username')}
+                  onBlur={() => setFocusedField('')}
+                  className={`w-full bg-white/70 backdrop-blur-sm border rounded-lg px-3 py-2.5 text-sm transition-all focus:outline-none focus:bg-white
+                    ${focusedField === 'username' ? 'border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'border-slate-200/80'}
+                    ${errors.username ? 'border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : ''}
+                    ${shakeFields.includes('username') ? 'animate-shake' : ''}
+                  `}
+                />
+                {errors.username && (
+                  <p className="absolute -bottom-5 left-1 text-[10px] text-red-500 font-medium">{errors.username}</p>
+                )}
+              </div>
+
+              <div className="relative mb-2">
+                <input 
+                  type="password" 
+                  placeholder="密码 / PIN 码" 
+                  value={password}
+                  onChange={handlePasswordChange}
+                  onFocus={() => setFocusedField('password')}
+                  onBlur={() => setFocusedField('')}
+                  className={`w-full bg-white/70 backdrop-blur-sm border rounded-lg px-3 py-2.5 text-sm transition-all focus:outline-none focus:bg-white
+                    ${focusedField === 'password' ? 'border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'border-slate-200/80'}
+                    ${errors.password ? 'border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : ''}
+                    ${shakeFields.includes('password') ? 'animate-shake' : ''}
+                  `}
+                />
+                {errors.password && (
+                  <p className="absolute -bottom-5 left-1 text-[10px] text-red-500 font-medium">{errors.password}</p>
+                )}
+              </div>
+
+              <button type="submit" className="w-full mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg py-2.5 text-sm font-medium transition-colors shadow-sm">
+                本地解锁
+              </button>
+            </form>
+
+            <div className="mt-6 flex flex-col items-center gap-2">
+              <div className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors">
+                <Icon name="usb" className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium">支持插入 USB Dongle 即刻解锁</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- Page 2: 任务配置台 ---
+    const TaskSetupPage = () => {
+      const historyTasks = [
+        { id: 't1', name: '2024春 物理光电期中', file: '光电1班名单.xlsx', time: '2024-04-15', count: 48, maxScore: 100, passScore: 60, allowDecimal: false, color: 'bg-indigo-500' },
+        { id: 't2', name: '2024春 数学微积分期末', file: '数学2班名单.xlsx', time: '2024-06-20', count: 52, maxScore: 100, passScore: 60, allowDecimal: true, color: 'bg-cyan-500' },
+        { id: 't3', name: '2024秋 英语精读月考', file: '英语3班名单.xlsx', time: '2024-10-08', count: 35, maxScore: 150, passScore: 90, allowDecimal: false, color: 'bg-emerald-500' },
+        { id: 't4', name: '2024秋 化学反应期中', file: '化学4班名单.xlsx', time: '2024-11-12', count: 42, maxScore: 100, passScore: 60, allowDecimal: false, color: 'bg-orange-500' },
+      ];
+
+      const [activeTaskId, setActiveTaskId] = useState(null); 
+      
+      const [taskName, setTaskName] = useState('');
+      const [maxScore, setMaxScore] = useState(100);
+      const [passScore, setPassScore] = useState(60);
+      const [allowDecimal, setAllowDecimal] = useState(false);
+      const [saveToast, setSaveToast] = useState(false);
+
+      const activeTask = historyTasks.find(t => t.id === activeTaskId);
+
+      const handleSelectHistory = (task) => {
+        setActiveTaskId(task.id);
+        setTaskName(task.name);
+        setMaxScore(task.maxScore);
+        setPassScore(task.passScore);
+        setAllowDecimal(task.allowDecimal);
+      };
+
+      const handleNewTask = () => {
+        setActiveTaskId('new');
+        setTaskName('未命名新任务');
+        setMaxScore(100);
+        setPassScore(60);
+        setAllowDecimal(false);
+      };
+
+      const handleSave = () => {
+        setSaveToast(true);
+        setTimeout(() => setSaveToast(false), 2000);
+      };
+
+      const handleCancel = () => {
+        setActiveTaskId(null);
+      };
+
+      return (
+        <div className="flex h-full bg-[#f5f5f7]">
+          <div className="w-[300px] bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+            <div className="p-4 border-b border-slate-100">
+              <button 
+                onClick={handleNewTask}
+                className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              >
+                <Icon name="plus" className="w-4 h-4" />
+                新建任务
+              </button>
+            </div>
+            
+            <div className="flex-1 p-4">
+              <h3 className="text-xs font-semibold text-slate-400 mb-4 px-1">历史任务</h3>
+              <div className="space-y-1">
+                {historyTasks.map((task) => (
+                  <div 
+                    key={task.id} 
+                    onClick={() => handleSelectHistory(task)}
+                    className={`p-3 rounded-xl cursor-pointer transition-colors border flex gap-3 ${
+                      activeTaskId === task.id 
+                        ? 'bg-blue-50/50 border-blue-100 ring-1 ring-blue-400/20' 
+                        : 'border-transparent hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${task.color}`}></div>
+                    <div>
+                      <p className={`text-sm font-medium ${activeTaskId === task.id ? 'text-blue-700' : 'text-slate-700'}`}>{task.name}</p>
+                      <p className="text-xs text-slate-400 mt-1">{task.count} 人 · {task.time}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto relative bg-white/50">
+            {activeTaskId === null ? (
+              <div className="flex flex-col items-center justify-center h-full text-slate-500 bg-white">
+                <div className="w-20 h-20 bg-slate-50 border border-slate-100 rounded-3xl flex items-center justify-center mb-6 shadow-sm">
+                  <Icon name="file-text" className="w-8 h-8 text-slate-300" strokeWidth="1.5" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">选择或新建任务</h3>
+                <p className="text-sm text-slate-400">从左侧选择历史任务，或点击"新建任务"</p>
+              </div>
+            ) : (
+              <div className="p-10 max-w-4xl mx-auto">
+                <div className="mb-8">
+                  <input 
+                    type="text" 
+                    value={taskName}
+                    onChange={(e) => setTaskName(e.target.value)}
+                    className="text-2xl font-bold text-slate-800 bg-transparent border-b-2 border-dashed border-slate-300 focus:border-blue-500 outline-none w-auto min-w-[300px] pb-1 transition-colors"
+                    placeholder="输入任务名称..."
+                  />
+                </div>
+                
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6 transition-all">
+                  <h3 className="text-sm font-semibold text-slate-800 mb-4">导入学生名单</h3>
+                  {activeTaskId !== 'new' ? (
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <Icon name="file-text" className="text-blue-600 w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-700">{activeTask?.file}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">解析于: {activeTask?.time}</p>
+                        </div>
+                      </div>
+                      <button className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-medium text-slate-600 transition-colors">
+                        <Icon name="refresh-cw" className="w-3.5 h-3.5" />
+                        重新上传
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer">
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-3">
+                        <Icon name="upload-cloud" className="text-blue-500 w-6 h-6" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-700">拖拽 Excel 文件至此处，或</p>
+                      <div className="mt-4 flex gap-3">
+                        <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50">本地上传</button>
+                        <button className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-100">教务系统同步</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 transition-all">
+                  <h3 className="text-sm font-semibold text-slate-800 mb-6">录入校验规则设定</h3>
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">卷面总分 (阈值上限)</p>
+                        <p className="text-xs text-slate-500 mt-1">超过此分数的 AI 识别将被阻断</p>
+                      </div>
+                      <input 
+                        type="number" 
+                        value={maxScore}
+                        onChange={(e) => setMaxScore(Number(e.target.value))}
+                        className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-colors" 
+                      />
+                    </div>
+                    
+                    <hr className="border-slate-100" />
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">及格线红线预警</p>
+                        <p className="text-xs text-slate-500 mt-1">用于统计视图的及格率计算</p>
+                      </div>
+                      <input 
+                        type="number" 
+                        value={passScore}
+                        onChange={(e) => setPassScore(Number(e.target.value))}
+                        className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-colors" 
+                      />
+                    </div>
+
+                    <hr className="border-slate-100" />
+
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">允许识别小数分数</p>
+                          <p className="text-xs text-slate-500 mt-1">如开启，模型将额外识别小数点特征</p>
+                        </div>
+                        <div className={`ios-switch ${allowDecimal ? 'active' : ''}`} onClick={() => setAllowDecimal(!allowDecimal)}></div>
+                      </div>
+                      
+                      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${allowDecimal ? 'max-h-20 opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+                        <div className="bg-slate-50 rounded-lg p-3 flex items-center justify-between border border-slate-100 ml-4">
+                          <p className="text-sm text-slate-600">小数精度限定</p>
+                          <select className="bg-white border border-slate-200 rounded md px-2 py-1 text-sm outline-none">
+                            <option>0.5 分</option>
+                            <option>0.1 分</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex justify-end items-center gap-4">
+                    {saveToast && (
+                      <span className="text-sm text-green-600 font-medium flex items-center gap-1">
+                        <Icon name="check-circle-2" className="w-4 h-4" /> 保存成功
+                      </span>
+                    )}
+                    <button onClick={handleCancel} className="px-6 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors">
+                      取消
+                    </button>
+                    <button 
+                      onClick={handleSave}
+                      className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+                    >
+                      {activeTaskId === 'new' ? '保存任务' : '保存修改'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // --- Page 3: 智能审核工作区 ---
+    const ReviewWorkspacePage = () => {
+      const [filter, setFilter] = useState('all');
+      const [isCameraOn, setIsCameraOn] = useState(true);
+      const [toast, setToast] = useState({ show: false, msg: '' });
+      const [expandedImageId, setExpandedImageId] = useState(null); 
+
+      const [data, setData] = useState([
+        { id: '2024001', name: '王梦琪', aiScore: '98', status: 'success', edited: false },
+        { id: '2024002', name: '李浩宇', aiScore: '150', status: 'error', edited: false, errorType: '超满分' },
+        { id: '2024003', name: '张子涵', aiScore: '8', status: 'warning', edited: false, confidence: '45%' },
+        { id: '2024004', name: '刘星辰', aiScore: '85', status: 'success', edited: false },
+        { id: '2024005', name: '陈雨泽', aiScore: 'A', status: 'error', edited: false, errorType: '非数字' },
+      ]);
+
+      const triggerToast = () => {
+        setToast({ show: true, msg: '已记录该困难样本，感谢协助 AI 进化' });
+        setTimeout(() => setToast({ show: false, msg: '' }), 3000);
+      };
+
+      const handleEdit = (id, newScore) => {
+        setData(prev => prev.map(item => {
+          if (item.id === id) {
+            return { ...item, aiScore: newScore, status: 'success', edited: true };
+          }
+          return item;
+        }));
+        triggerToast();
+        setExpandedImageId(null); 
+      };
+
+      const filteredData = data.filter(item => {
+        if (filter === 'error') return item.status === 'error';
+        if (filter === 'warning') return item.status === 'warning';
+        if (filter === 'success') return item.status === 'success';
+        return true;
+      });
+
+      const errorCount = data.filter(d => d.status === 'error').length;
+      const warningCount = data.filter(d => d.status === 'warning').length;
+      const successCount = data.filter(d => d.status === 'success').length;
+
+      return (
+        <div className="flex flex-col h-full bg-[#f5f5f7] relative">
+          <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-10">
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <Icon name="camera" className="w-4 h-4 text-blue-500" />
+              2024春 物理光电期中
+            </h2>
+            <div className="flex bg-slate-100 p-1 rounded-lg overflow-x-auto">
+              <button onClick={() => setFilter('all')} className={`px-4 py-1 rounded-md text-xs font-medium transition-all ${filter === 'all' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>全部</button>
+              <button onClick={() => setFilter('error')} className={`px-4 py-1 rounded-md text-xs font-medium transition-all ${filter === 'error' ? 'bg-white shadow-sm text-red-600' : 'text-slate-500 hover:text-slate-700'}`}>仅看红色异常</button>
+              <button onClick={() => setFilter('warning')} className={`px-4 py-1 rounded-md text-xs font-medium transition-all ${filter === 'warning' ? 'bg-white shadow-sm text-yellow-600' : 'text-slate-500 hover:text-slate-700'}`}>仅看黄色待确认</button>
+              <button onClick={() => setFilter('success')} className={`px-4 py-1 rounded-md text-xs font-medium transition-all ${filter === 'success' ? 'bg-white shadow-sm text-green-600' : 'text-slate-500 hover:text-slate-700'}`}>仅看绿色通过</button>
+            </div>
+          </div>
+
+          <div className="flex flex-1 overflow-hidden">
+            <div className="w-[300px] bg-white border-r border-slate-200 p-4 flex flex-col justify-between shrink-0">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">实时采集流</span>
+                  <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-colors ${isCameraOn ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    <div className={`w-2 h-2 rounded-full ${isCameraOn ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                    <span className="text-[10px] font-bold">{isCameraOn ? 'STM32 已连接' : '设备已离线'}</span>
+                  </div>
+                </div>
+                <div className="bg-slate-900 rounded-xl relative overflow-hidden flex items-center justify-center border-4 border-slate-800 shadow-inner h-48">
+                  {isCameraOn ? (
+                    <>
+                      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1616628188550-808682f392a4?q=80&w=800&auto=format&fit=crop')] bg-cover bg-center opacity-40 transition-opacity duration-300"></div>
+                      <div className="relative border-2 border-green-400/50 w-3/4 h-1/3 rounded-lg flex items-center justify-center bg-green-400/10 backdrop-blur-sm">
+                        <span className="text-green-400 text-[10px] font-mono absolute top-1 left-1">[ROI 锁定]</span>
+                        <span className="text-white text-3xl font-handwriting opacity-80">98</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-600">
+                      <Icon name="video-off" className="w-10 h-10 mb-2 opacity-50" />
+                      <span className="text-xs font-bold tracking-widest uppercase opacity-50">No Signal</span>
+                    </div>
+                  )}
+                  
+                  <button 
+                    onClick={() => setIsCameraOn(!isCameraOn)}
+                    className={`absolute bottom-3 right-3 p-2 rounded-lg backdrop-blur-md transition-all duration-300 
+                      ${isCameraOn 
+                        ? 'bg-white/20 text-white hover:bg-white/30 opacity-100' 
+                        : 'bg-red-500 text-white opacity-100 shadow-lg shadow-red-500/30'
+                      }
+                    `}
+                    title={isCameraOn ? "关闭摄像头监控" : "开启摄像头监控"}
+                  >
+                    {isCameraOn ? <Icon name="video" className="w-4 h-4" /> : <Icon name="video-off" className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="mt-4 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">录入概览</h3>
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                  <div className="flex justify-between items-center border-b border-slate-200/50 pb-1">
+                    <span className="text-slate-500">总录入</span>
+                    <span className="font-bold text-slate-700">{data.length}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200/50 pb-1">
+                    <span className="text-red-500 font-medium">逻辑异常</span>
+                    <span className="font-bold text-red-600">{errorCount}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200/50 pb-1">
+                    <span className="text-yellow-600 font-medium">待确认</span>
+                    <span className="font-bold text-yellow-600">{warningCount}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200/50 pb-1">
+                    <span className="text-green-600 font-medium">已确认</span>
+                    <span className="font-bold text-green-600">{successCount}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-[#f8f9fa] overflow-auto p-8 relative">
+              <div className="flex items-center gap-3 mb-6">
+                <h3 className="text-lg font-bold text-slate-800">审核列表</h3>
+                <span className="text-xs font-medium text-slate-400">共 {filteredData.length} 条</span>
+              </div>
+              
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">学号</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">姓名</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">状态</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">原图切片</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">AI 分数 / 人工修正</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredData.map((row) => (
+                      <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 text-sm text-slate-600 font-medium">{row.id}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{row.name}</td>
+                        <td className="px-4 py-3">
+                          {row.status === 'success' && <div className="flex items-center gap-1.5 text-green-600"><Icon name="check-circle-2" className="w-4 h-4" /><span className="text-xs font-medium">通过</span></div>}
+                          {row.status === 'error' && <div className="flex items-center gap-1.5 text-red-500"><Icon name="alert-circle" className="w-4 h-4" /><span className="text-xs font-medium">{row.errorType}</span></div>}
+                          {row.status === 'warning' && <div className="flex items-center gap-1.5 text-yellow-600"><Icon name="help-circle" className="w-4 h-4" /><span className="text-xs font-medium">低置信度 ({row.confidence})</span></div>}
+                        </td>
+                        <td className="px-4 py-3 relative">
+                          <div 
+                            onClick={() => setExpandedImageId(expandedImageId === row.id ? null : row.id)}
+                            className="w-14 h-8 bg-slate-100 rounded border border-slate-200 flex items-center justify-center cursor-pointer relative hover:border-blue-400 transition-colors"
+                          >
+                            <span className="text-xs font-handwriting italic text-slate-500">{row.aiScore}</span>
+                            
+                            {expandedImageId === row.id && (
+                              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center">
+                                <div className="bg-white p-2 rounded-xl shadow-xl border border-slate-200 flex flex-col items-center min-w-[140px]">
+                                  <div className="flex justify-between w-full mb-1">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">原始高清切片</span>
+                                    <div onClick={(e) => { e.stopPropagation(); setExpandedImageId(null); }} className="cursor-pointer hover:text-slate-800 text-slate-400">
+                                      <Icon name="x" className="w-3 h-3" />
+                                    </div>
+                                  </div>
+                                  <div className="w-32 h-20 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-3xl font-handwriting italic text-black shadow-inner">
+                                    {row.aiScore}
+                                  </div>
+                                </div>
+                                <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-white border-l border-b border-slate-200 rotate-45"></div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 flex items-center gap-3">
+                          <input 
+                            type="text" 
+                            defaultValue={row.aiScore}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleEdit(row.id, e.target.value);
+                            }}
+                            className={`w-20 px-3 py-1.5 rounded-md text-sm font-semibold outline-none transition-all
+                              ${row.status === 'error' ? 'bg-red-50 text-red-700 border border-red-200 focus:ring-2 focus:ring-red-200' : 
+                                row.status === 'warning' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 focus:ring-2 focus:ring-yellow-200' : 
+                                'bg-green-50 text-green-700 border border-transparent'}
+                            `}
+                          />
+                          {row.edited && <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">已修正</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className={`fixed bottom-8 right-8 bg-slate-800 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 transition-all duration-500 ease-out z-50 ${toast.show ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
+                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                  <Icon name="sparkles" className="w-4 h-4 text-blue-400" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{toast.msg}</span>
+                  <span className="text-[10px] text-slate-400">已打包加入微调数据集</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- Page 4: 审计日志与洞察页 ---
+    const AuditPage = () => {
+      const auditSubjects = [
+        { id: 's1', name: '2024春 物理光电期中', date: '2024-04-15', students: 48, maxScore: 100, passScore: 60, avg: '78.4', pass: '89.6%', acc: '73.2%', interventions: 5, color: 'bg-indigo-500' },
+        { id: 's2', name: '2024春 数学微积分期末', date: '2024-06-20', students: 52, maxScore: 100, passScore: 60, avg: '92.1', pass: '96.5%', acc: '94.0%', interventions: 2, color: 'bg-cyan-500' },
+        { id: 's3', name: '2024秋 英语精读月考', date: '2024-10-08', students: 35, maxScore: 150, passScore: 90, avg: '71.8', pass: '82.0%', acc: '88.1%', interventions: 4, color: 'bg-emerald-500' },
+        { id: 's4', name: '2024秋 化学反应期中', date: '2024-11-12', students: 42, maxScore: 100, passScore: 60, avg: '84.3', pass: '91.0%', acc: '89.5%', interventions: 3, color: 'bg-orange-500' },
+      ];
+
+      const [activeSubjectId, setActiveSubjectId] = useState('s1');
+      const [exportStatus, setExportStatus] = useState('idle'); 
+
+      const activeData = auditSubjects.find(s => s.id === activeSubjectId);
+
+      const logs = [
+        { id: 1, type: 'ai', time: '09:23:05', name: '王浩然', studentId: '2024003', score: '72', operator: 'System' },
+        { id: 2, type: 'manual', time: '09:23:12', name: '李思雨', studentId: '2024002', oldScore: '85', newScore: '95', operator: 'T20240101' },
+        { id: 3, type: 'ai', time: '09:23:18', name: '赵子轩', studentId: '2024005', score: '88', operator: 'System' },
+        { id: 4, type: 'review', time: '09:23:31', name: '孙梦琪', studentId: '2024006', score: '60', operator: 'T20240101' },
+      ];
+
+      const handleExport = () => {
+        setExportStatus('success');
+        setTimeout(() => setExportStatus('idle'), 3000);
+      };
+
+      return (
+        <div className="flex h-full bg-[#f8f9fa]">
+          <div className="w-[300px] bg-white border-r border-slate-200 flex flex-col shrink-0">
+            <div className="p-5 border-b border-slate-100 flex items-center gap-2">
+              <Icon name="file-signature" className="w-4 h-4 text-slate-600" />
+              <h2 className="text-sm font-bold text-slate-800">往期数据看板</h2>
+            </div>
+            <div className="px-5 pt-3 pb-1">
+              <p className="text-xs text-slate-400">已封存 {auditSubjects.length} 份考试</p>
+            </div>
+            <div className="flex-1 space-y-1 overflow-y-auto p-3">
+              {auditSubjects.map((subject) => (
+                <div 
+                  key={subject.id} 
+                  onClick={() => setActiveSubjectId(subject.id)}
+                  className={`p-3 rounded-xl cursor-pointer transition-colors border flex gap-3 ${
+                    activeSubjectId === subject.id 
+                      ? 'bg-blue-50/50 border-blue-100 shadow-sm' 
+                      : 'border-transparent hover:bg-slate-50'
+                  }`}
+                >
+                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${subject.color}`}></div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-bold ${activeSubjectId === subject.id ? 'text-blue-700' : 'text-slate-700'}`}>{subject.name}</p>
+                    <p className="text-xs text-slate-400 mt-1">{subject.students} 人 · 均 {subject.avg}</p>
+                  </div>
+                  <div>
+                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded">已封存</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 p-8 overflow-y-auto">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${activeData.color}`}></div>
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-800">{activeData.name}</h1>
+                  <div className="flex items-center gap-2 text-sm text-slate-400 mt-1 font-medium">
+                    <span>{activeData.date}</span>
+                    <span>·</span>
+                    <span>{activeData.students} 名学生</span>
+                    <span>·</span>
+                    <span>满分 {activeData.maxScore} 分</span>
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={handleExport}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all
+                  ${exportStatus === 'success' 
+                    ? 'bg-green-500 text-white shadow-green-500/20' 
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                  }
+                `}
+              >
+                {exportStatus === 'success' ? (
+                  <><Icon name="check-circle-2" className="w-4 h-4" /> 导出成功</>
+                ) : (
+                  <><Icon name="download" className="w-4 h-4" /> 一键导出 Excel</>
+                )}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-6 mb-8">
+              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col">
+                <span className="text-sm font-semibold text-slate-500 mb-4">班级平均分</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold tracking-tight text-blue-600">{activeData.avg}</span>
+                  <span className="text-lg font-bold text-slate-600">分</span>
+                </div>
+                <span className="text-xs font-medium text-slate-400 mt-2">满分 {activeData.maxScore} 分</span>
+              </div>
+              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col">
+                <span className="text-sm font-semibold text-slate-500 mb-4">及格率</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold tracking-tight text-emerald-500">{activeData.pass.replace('%','')}</span>
+                  <span className="text-lg font-bold text-slate-600">%</span>
+                </div>
+                <span className="text-xs font-medium text-slate-400 mt-2">及格线 {activeData.passScore} 分</span>
+              </div>
+              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col">
+                <span className="text-sm font-semibold text-slate-500 mb-4">AI 一次性通过率</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold tracking-tight text-purple-600">{activeData.acc.replace('%','')}</span>
+                  <span className="text-lg font-bold text-slate-600">%</span>
+                </div>
+                <span className="text-xs font-medium text-slate-400 mt-2">人工干预 {activeData.interventions} 条</span>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden pb-8">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-base font-bold text-slate-800">操作溯源时间线</h2>
+                  <span className="text-xs font-medium bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">11 条操作记录</span>
+                </div>
+                <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                  <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500"></span> AI自动通过</div>
+                  <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 人工复核</div>
+                  <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500"></span> 人工修改</div>
+                </div>
+              </div>
+              
+              <div className="mx-6 mt-6 mb-8 bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2 text-sm text-orange-800">
+                <Icon name="alert-triangle" className="w-4 h-4 shrink-0 mt-0.5 text-orange-500" />
+                <p>本次录入共 <span className="font-bold">4</span> 处人工修改、<span className="font-bold">1</span> 处复核记录。所有改前原图切片已归档，可供教务处调取。</p>
+              </div>
+
+              <div className="px-6 flex flex-col">
+                {logs.map((log, index) => {
+                  const isLast = index === logs.length - 1;
+                  const dotColor = log.type === 'manual' ? 'bg-red-500' : log.type === 'ai' ? 'bg-blue-500' : 'bg-yellow-500';
+                  const tagStyle = log.type === 'manual' ? 'border-red-200 bg-red-50 text-red-600' : log.type === 'ai' ? 'border-blue-200 bg-blue-50 text-blue-600' : 'border-yellow-200 bg-yellow-50 text-yellow-600';
+                  const tagText = log.type === 'manual' ? '人工手动修改' : log.type === 'ai' ? 'AI 自动通过' : '人工复核通过';
+
+                  return (
+                    <div key={log.id} className="flex">
+                      <div className="w-20 pt-1 text-xs font-medium text-slate-400 text-right shrink-0">{log.time}</div>
+                      <div className="flex flex-col items-center px-4 shrink-0">
+                        <div className={`w-3 h-3 rounded-full mt-1.5 z-10 ${dotColor} shadow-sm ring-4 ring-white`}></div>
+                        {!isLast && <div className="flex-1 w-px bg-slate-200 my-1"></div>}
+                      </div>
+                      <div className="flex-1 pb-8">
+                        <div className="flex items-center gap-3 mb-2.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${tagStyle}`}>{tagText}</span>
+                          <span className="text-sm font-bold text-slate-800">{log.name}</span>
+                          <span className="text-xs text-slate-500">{log.studentId}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          {log.type === 'manual' ? (
+                            <>
+                              <div className="px-3 py-1 bg-slate-50 border border-slate-200 rounded text-sm font-medium text-slate-600">{log.oldScore}</div>
+                              <span className="text-slate-400">→</span>
+                              <div className="px-3 py-1 bg-green-100 text-green-700 font-bold rounded text-sm shadow-sm">{log.newScore} 分</div>
+                              <span className="text-[10px] font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded ml-2 border border-red-100">原值 {log.oldScore} 已归档</span>
+                              <span className="text-[10px] text-slate-400 ml-2 flex items-center gap-1">
+                                <Icon name="user" className="w-3 h-3"/> 操作人: {log.operator}
+                              </span>
+                            </>
+                          ) : (
+                            <div className="text-base font-bold text-slate-800 ml-1">{log.score} 分</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- App Shell (全局顶栏导航版) ---
+    const App = () => {
+      const [currentView, setCurrentView] = useState('login'); 
+      const [showProfile, setShowProfile] = useState(false);
+
+      if (currentView === 'login') {
+        return <LoginPage onLogin={() => setCurrentView('setup')} />;
+      }
+
+      return (
+        <div className="flex flex-col h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden font-['Inter',_sans-serif]">
+          {/* 顶部通栏导航 (Header) */}
+          <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-50 shrink-0 shadow-sm">
+            {/* Logo 区 */}
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-md shadow-blue-600/20">
+                <Icon name="shield" className="text-white w-5 h-5" />
+              </div>
+              <span className="font-bold text-lg text-slate-800 tracking-tight">SmartGrade</span>
+            </div>
+
+            {/* 导航 Tab 区 */}
+            <div className="flex items-center gap-2 h-full">
+              <TopTab 
+                icon={<Icon name="file-text" />} label="任务配置台" isActive={currentView === 'setup'} 
+                onClick={() => setCurrentView('setup')} 
+              />
+              <TopTab 
+                icon={<Icon name="eye" />} label="智能审核" isActive={currentView === 'workspace'} 
+                onClick={() => setCurrentView('workspace')} 
+              />
+              <TopTab 
+                icon={<Icon name="file-signature" />} label="审计日志" isActive={currentView === 'audit'} 
+                onClick={() => setCurrentView('audit')} 
+              />
+            </div>
+
+            {/* 右侧用户区 */}
+            <div className="relative flex items-center gap-3">
+              <div className="flex items-center gap-2 cursor-pointer p-1 rounded-lg hover:bg-slate-50 transition-colors" onClick={() => setShowProfile(!showProfile)}>
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  闻
+                </div>
+                <div className="flex flex-col hidden sm:flex">
+                  <span className="text-sm font-bold text-slate-700 leading-tight">闻雨涵</span>
+                  <span className="text-[10px] text-slate-400">T20240101</span>
+                </div>
+                <Icon name="chevron-down" className="w-4 h-4 text-slate-400 ml-1" />
+              </div>
+
+              {/* 下拉菜单 Popover */}
+              {showProfile && (
+                <div className="absolute right-0 top-12 w-48 bg-white border border-slate-200 rounded-xl shadow-xl py-1 animate-in fade-in duration-200 z-50">
+                  <button 
+                    onClick={() => {
+                      setShowProfile(false);
+                      setCurrentView('login');
+                    }}
+                    className="w-full flex items-center gap-2 text-red-600 hover:bg-red-50 px-4 py-2.5 transition-colors text-sm font-medium"
+                  >
+                    <Icon name="log-out" className="w-4 h-4" />
+                    退出登录
+                  </button>
+                </div>
+              )}
+            </div>
+          </header>
+
+          {/* 主内容区域 */}
+          <main 
+            className="flex-1 w-full overflow-hidden bg-white relative"
+            onClick={() => setShowProfile(false)} 
+          >
+            {currentView === 'setup' && <TaskSetupPage />}
+            {currentView === 'workspace' && <ReviewWorkspacePage />}
+            {currentView === 'audit' && <AuditPage />}
+          </main>
+        </div>
+      );
+    }
+
+    // 顶部 Tab 辅助组件
+    const TopTab = ({ icon, label, isActive, onClick }) => (
+      <button 
+        onClick={onClick}
+        className={`h-full flex items-center gap-1.5 px-4 border-b-2 transition-all text-sm font-bold
+          ${isActive 
+            ? 'border-blue-600 text-blue-600 bg-blue-50/50' 
+            : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+          }
+        `}
+      >
+        {React.cloneElement(icon, { className: 'w-4 h-4' })}
+        {label}
+      </button>
+    );
+
+    // 渲染应用
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
